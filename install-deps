@@ -12,7 +12,7 @@ install_openblas() {
     rm -rf OpenBLAS
     git clone https://github.com/xianyi/OpenBLAS.git
     cd OpenBLAS
-    if [ $(getconf _NPROCESSORS_ONLN) == 1 ]; then
+    if [ $(getconf _NPROCESSORS_CONF) == 1 ]; then
         make NO_AFFINITY=1 USE_OPENMP=0 USE_THREAD=0
     else
         make NO_AFFINITY=1 USE_OPENMP=1
@@ -73,12 +73,13 @@ if [[ `uname` == 'Darwin' ]]; then
 
     # Install dependencies:
     brew update
-    brew install git readline cmake wget qt
+    brew install git readline cmake wget
     brew install libjpeg imagemagick zeromq graphicsmagick openssl
     brew link readline --force
     brew cask install xquartz
     brew list -1 | grep -q "^gnuplot\$" && brew remove gnuplot
     brew install gnuplot --with-wxmac --with-cairo --with-pdflib-lite --with-x11 --without-lua
+    brew install qt || true
 
 elif [[ "$(uname)" == 'Linux' ]]; then
 
@@ -130,14 +131,28 @@ elif [[ "$(uname)" == 'Linux' ]]; then
     elif [[ "$DISTRO" == "raspbian" ]]; then
         distribution="raspbian"
         debian_major_version="$VERSION"
+    elif [[ "$DISTRO" == "opensuse" ]]; then
+	distribution="opensuse"
+	opensuse_major_version="$VERSION"
+    # Detect Debian
+    elif [[ "$DISTRO" = "debian" ]]; then
+	distribution="debian"
+	debian_major_version="$VERSION"
+    elif [[ "$DISTRO" = "neon" ]]; then
+	distribution="ubuntu"
+	ubuntu_major_version="${VERSION%%.*}"
     else
-        echo '==> Only Ubuntu, elementary OS, Fedora, Archlinux and CentOS distributions are supported.'
+        echo '==> Only Ubuntu, elementary OS, Fedora, Archlinux, OpenSUSE, Debian, CentOS and KDE neon distributions are supported.'
         exit 1
     fi
 
     # Install dependencies for Torch:
     if [[ $distribution == 'ubuntu' ]]; then
-        sudo apt-get update
+        if sudo apt-get update ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update is failed"
+        fi
         # python-software-properties is required for apt-add-repository
         sudo apt-get install -y python-software-properties
         echo "==> Found Ubuntu version ${ubuntu_major_version}.xx"
@@ -155,7 +170,11 @@ elif [[ "$(uname)" == 'Linux' ]]; then
                 libsox-fmt-all
         fi
 
-        sudo apt-get update
+        if sudo apt-get update ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update is failed"
+        fi
         sudo apt-get install -y build-essential gcc g++ curl \
             cmake libreadline-dev git-core libqt4-dev libjpeg-dev \
             libpng-dev ncurses-dev imagemagick libzmq3-dev gfortran \
@@ -176,7 +195,11 @@ elif [[ "$(uname)" == 'Linux' ]]; then
 
     elif [[ $distribution == 'raspbian' ]]; then
         echo "==> Found Raspbian version ${debian_major_version}.xx"
-        sudo apt-get update
+        if sudo apt-get update ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update is failed"
+        fi
         sudo apt-get install -y build-essential gcc g++ curl \
             cmake libreadline-dev git-core libqt4-dev libjpeg-dev \
             libpng-dev ncurses-dev imagemagick libzmq3-dev gfortran \
@@ -184,14 +207,35 @@ elif [[ "$(uname)" == 'Linux' ]]; then
 
         install_openblas || true
 
+    elif [[ $distribution == 'opensuse' ]]; then
+        if sudo zypper refresh ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update failed"
+        fi
+        sudo zypper install -y -t pattern devel_basis
+	if [[ $opensuse_major_version == '42.2' ]]; then
+	    sudo zypper install -y gcc curl cmake readline-devel IPython git-core \
+            	libqt4 libjpeg62-devel libpng16-compat-devel ImageMagick unzip \
+            	gnuplot gcc-fortran libzmq5
+	else
+            sudo zypper install -y gcc curl cmake readline-devel IPython git-core \
+            	libqt4 libjpeg8-devel libpng15-compat-devel imagemagick unzip \
+            	gnuplot gcc-fortran libzmq3
+	fi
+
     elif [[ $distribution == 'elementary' ]]; then
         declare -a target_pkgs
         target_pkgs=( build-essential gcc g++ curl \
-                      cmake libreadline-dev git-core libqt4-core libqt4-gui \
+                      cmake libreadline-dev git-core libqtcore4 libqtgui4 \
                       libqt4-dev libjpeg-dev libpng-dev ncurses-dev \
                       imagemagick libzmq3-dev gfortran unzip gnuplot \
                       gnuplot-x11 ipython )
-        sudo apt-get update
+        if sudo apt-get update ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update is failed"
+        fi
         # python-software-properties is required for apt-add-repository
         sudo apt-get install -y python-software-properties
         if [[ $elementary_version == '0.3' ]]; then
@@ -204,7 +248,11 @@ elif [[ "$(uname)" == 'Linux' ]]; then
         else
             sudo -E add-apt-repository -y ppa:chris-lea/zeromq
         fi
-        sudo apt-get update
+        if sudo apt-get update ; then
+            echo "Updated successfully."
+        else
+            echo "Some portion of the update is failed"
+        fi
         sudo apt-get install -y "${target_pkgs[@]}"
 
         install_openblas || true
@@ -296,8 +344,29 @@ elif [[ "$(uname)" == 'Linux' ]]; then
         sudo pip install ipython
 
         install_openblas || true
-    fi
+    elif [[ $distribution == 'debian' ]]; then
+	if [[ $debian_major_version == '8' ]]; then
+	    echo "==> Found Debian version ${debian_major_version}"
+	    if sudo apt-get update ; then
+	       echo "Updated successfully."
+	    else
+	       echo "Some portion of the update is failed"
+	    fi
+	    #Basic package required for Torch
+	    sudo apt-get install -y build-essential curl \
+		 cmake libreadline-dev git-core libqt4-dev libjpeg-dev \
+		 libpng-dev ncurses-dev imagemagick libzmq3-dev gfortran \
+		 unzip gnuplot gnuplot-x11 ipython
 
+	    #require for common torch plug-ins
+	    sudo apt-get install -y libgraphicsmagick1-dev libfftw3-dev sox libsox-dev
+
+	    install_openblas || true
+	else
+	    echo "Only Jessie Debian 8 is supported for now, aborting."
+	    exit 1
+	fi
+    fi
 elif [[ "$(uname)" == 'FreeBSD' ]]; then
     pkg install ImageMagick cmake curl fftw3 git gnuplot libjpeg-turbo \
         libzmq3 ncurses openblas openssl png py27-ipython \
